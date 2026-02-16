@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Config & secrets
+config.json
+proxies.txt
+.env
+apiserver/.env
+
+# Logs
+*.log
+syntax_error.txt
+
+# Backups
+*.bak
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Lock files
+package-lock.json
