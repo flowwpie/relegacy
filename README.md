@@ -35,7 +35,7 @@ Built with **Node.js** for high performance and stability, this project proves t
     - This will trust the self-signed certificate so Growtopia/Https accepts the connection.
 
 ### 🚀 Usage
-1.  Start the API Database:
+1.  Start the API Database: (if u want host for yourself)
     ```bash
     node apiserver/apiserver.js
     ```
