@@ -272,7 +272,7 @@ const server = https.createServer(options, (req, res) => {
             return;
         }
 
-        // dashboard
+        // dashboard maybe
         if (url.startsWith('/player/login/dashboard')) {
             const slug = generateSlug();
             sessionCache.set(slug, {
