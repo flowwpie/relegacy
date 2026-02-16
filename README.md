@@ -32,7 +32,7 @@ Built with **Node.js** for high performance and stability, this project proves t
 3.  **Install Certificate** (Important!)  
     - Find `install-cert.bat` in the folder.
     - Right-click and **Run as Administrator**.
-    - This will trust the self-signed certificate so Growtopia accepts the connection.
+    - This will trust the self-signed certificate so Growtopia/Https accepts the connection.
 
 ### 🚀 Usage
 1.  Start the API Database:
