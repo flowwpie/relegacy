@@ -1,7 +1,7 @@
 @echo off
 echo.
 echo   halo! ini script buat install cert ke windows
-echo   biar growtopia ga nolak koneksi https kita
+echo   biar luci/gt ga nolak koneksi https kita
 echo.
 echo   pastiin kamu run as administrator ya!!
 echo.
@@ -14,7 +14,7 @@ if %errorlevel% equ 0 (
     echo   restart browser/growtopia kalo perlu
 ) else (
     echo.
-    echo   gagal bro, coba klik kanan - run as administrator
+    echo   gagal, coba klik kanan - run as administrator
 )
 echo.
 pause
