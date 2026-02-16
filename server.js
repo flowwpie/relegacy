@@ -1,8 +1,3 @@
-/*
-    growtopia-https-server
-    intercept login request & checktoken
-*/
-
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
