@@ -1,9 +1,11 @@
 {
   "name": "relegacy",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
+  "bin": "server.js",
   "scripts": {
+    "build": "pkg . --targets node22-win-x64 --output dist/relegacy.exe",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -16,5 +18,14 @@
     "node-forge": "^1.3.3",
     "selfsigned": "^5.5.0",
     "socks-proxy-agent": "^8.0.5"
+  },
+  "pkg": {
+    "assets": [
+      "lib/**/*"
+    ],
+    "outputPath": "dist"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.14.0"
   }
 }

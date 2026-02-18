@@ -18,7 +18,7 @@ Built with **Node.js** for high performance and stability, this project proves t
 - [x] Social login Token G login
 - [x] Session refresh
 - [x] Ltoken Validate
-- [ ] Adding Socks5 Support 
+- [x] Adding Socks5 Support 
 - [ ] Apple login Social Login 
 - [ ] enet connect for better token validation
 
