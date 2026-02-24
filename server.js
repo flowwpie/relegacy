@@ -23,7 +23,7 @@ if (cluster.isMaster || cluster.isPrimary) {
     } catch (e) { }
 
     console.log('');
-    console.log('  Relegacy Http Serper v1.2');
+    console.log('  Relegacy Http Serper v1.4');
     console.log('  ----------------------');
     console.log(`  workers: ${numCPUs}`);
     console.log(`  pid: ${process.pid}`);
@@ -222,15 +222,15 @@ const server = https.createServer(options, (req, res) => {
                 }
 
                 // decide proxy: per-client match or random
-                function proceedWithProxy(proxy) {
+                function proceedWithProxy(proxy, gtIp = 'login.growtopiagame.com') {
                     // 2. fetch token from gt
                     if (DEBUG) console.log('step 2: fetching token from gt...');
-                    const gtIp = 'login.growtopiagame.com';
 
                     const agent = proxy || getUpstreamAgent();
 
                     const opts = {
                         hostname: gtIp,
+                        servername: 'login.growtopiagame.com',
                         port: 443,
                         path: socialPath,
                         method: 'GET',
@@ -262,6 +262,7 @@ const server = https.createServer(options, (req, res) => {
 
                                     const redirOpts = {
                                         hostname: gtIp,
+                                        servername: 'login.growtopiagame.com',
                                         port: 443,
                                         path: redirPath,
                                         method: 'GET',
@@ -335,6 +336,7 @@ const server = https.createServer(options, (req, res) => {
 
                                 const checkOpts = {
                                     hostname: gtIp,
+                                    servername: 'login.growtopiagame.com',
                                     port: 443,
                                     path: '/player/growid/checktoken?valKey=40db4045f2d8c572efe8c4a060605726',
                                     method: 'POST',
@@ -383,10 +385,25 @@ const server = https.createServer(options, (req, res) => {
                         if (!matched) {
                             if (DEBUG) console.log(`no socks match for ${ip}, using direct`);
                         }
-                        proceedWithProxy(matched);
+                        if (matched) {
+                            proceedWithProxy(matched);
+                        } else {
+                            resolveGrowtopiaIP((resolvedIp) => {
+                                if (!resolvedIp) { err502(res, MESSAGES.dnsError); return; }
+                                proceedWithProxy(null, resolvedIp);
+                            });
+                        }
                     });
                 } else {
-                    proceedWithProxy(getProxyAgent());
+                    const proxyAgent = getProxyAgent();
+                    if (proxyAgent) {
+                        proceedWithProxy(proxyAgent);
+                    } else {
+                        resolveGrowtopiaIP((resolvedIp) => {
+                            if (!resolvedIp) { err502(res, MESSAGES.dnsError); return; }
+                            proceedWithProxy(null, resolvedIp);
+                        });
+                    }
                 }
             });
             return;
