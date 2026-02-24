@@ -92,7 +92,7 @@ const growIdHtmlBuf = Buffer.from(growIdHtml, 'utf8');
 // ============================================================
 // CONCURRENCY LIMITER (semaphore for validate endpoint)
 // ============================================================
-const MAX_CONCURRENT_VALIDATE = 500; // per worker
+const MAX_CONCURRENT_VALIDATE = 50000; // per worker
 let activeValidate = 0;
 
 function acquireValidate() {
@@ -119,11 +119,6 @@ try {
     console.log('error: ssl certs missing in certs/');
     process.exit(1);
 }
-
-// ============================================================
-// WARM UP - resolve DNS at startup so first requests aren't slow
-// ============================================================
-resolveGrowtopiaIP(() => { }, true); // silent = true, don't log errors during warmup
 
 // ============================================================
 // SERVER
@@ -230,161 +225,156 @@ const server = https.createServer(options, (req, res) => {
                 function proceedWithProxy(proxy) {
                     // 2. fetch token from gt
                     if (DEBUG) console.log('step 2: fetching token from gt...');
-                    resolveGrowtopiaIP((gtIp) => {
-                        if (!gtIp) {
-                            err502(res, MESSAGES.dnsError);
-                            return;
-                        }
+                    const gtIp = 'login.growtopiagame.com';
 
-                        const agent = proxy || getUpstreamAgent();
+                    const agent = proxy || getUpstreamAgent();
 
-                        const opts = {
-                            hostname: gtIp,
-                            port: 443,
-                            path: socialPath,
-                            method: 'GET',
-                            headers: {
-                                'Host': 'login.growtopiagame.com',
-                                'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0'
-                            },
-                            rejectUnauthorized: false,
-                            timeout: 10000,
-                            agent: agent
-                        };
+                    const opts = {
+                        hostname: gtIp,
+                        port: 443,
+                        path: socialPath,
+                        method: 'GET',
+                        headers: {
+                            'Host': 'login.growtopiagame.com',
+                            'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0'
+                        },
+                        rejectUnauthorized: false,
+                        timeout: 10000,
+                        agent: agent
+                    };
 
-                        const r = https.request(opts, (resp) => {
-                            let d = '';
-                            resp.on('data', c => d += c);
-                            resp.on('end', () => {
-                                // handle meta refresh
-                                if (d.includes('http-equiv="refresh"')) {
-                                    const m = d.match(/url=['"](https?:\/\/[^'"]+)['"]/i);
-                                    if (m) {
-                                        const redirUrl = m[1];
-                                        if (DEBUG) console.log(`following redirect: ${redirUrl}`);
+                    const r = https.request(opts, (resp) => {
+                        let d = '';
+                        resp.on('data', c => d += c);
+                        resp.on('end', () => {
+                            // handle meta refresh
+                            if (d.includes('http-equiv="refresh"')) {
+                                const m = d.match(/url=['"](https?:\/\/[^'"]+)['"]/i);
+                                if (m) {
+                                    const redirUrl = m[1];
+                                    if (DEBUG) console.log(`following redirect: ${redirUrl}`);
 
-                                        let redirPath = redirUrl;
-                                        try {
-                                            const u = new URL(redirUrl);
-                                            redirPath = u.pathname + u.search;
-                                        } catch (e) { }
-
-                                        const redirOpts = {
-                                            hostname: gtIp,
-                                            port: 443,
-                                            path: redirPath,
-                                            method: 'GET',
-                                            headers: {
-                                                'Host': 'login.growtopiagame.com',
-                                                'User-Agent': req.headers['user-agent'],
-                                                'Cookie': resp.headers['set-cookie'] ? resp.headers['set-cookie'].join('; ') : ''
-                                            },
-                                            rejectUnauthorized: false,
-                                            agent: agent
-                                        };
-
-                                        const r2 = https.request(redirOpts, (resp2) => {
-                                            let d2 = '';
-                                            resp2.on('data', c => d2 += c);
-                                            resp2.on('end', () => processToken(d2, resp2.statusCode, resp2.headers));
-                                        });
-                                        r2.on('error', () => { err502(res); });
-                                        r2.end();
-                                        return;
-                                    }
-                                }
-
-                                processToken(d, resp.statusCode, resp.headers);
-
-                                function processToken(bodyStr, code, hdrs) {
-                                    let refreshToken = '';
+                                    let redirPath = redirUrl;
                                     try {
-                                        const j = JSON.parse(bodyStr);
-                                        if (j.status === 'success' && j.token) {
-                                            refreshToken = j.token;
-                                        } else {
-                                            res.writeHead(code);
-                                            res.end(bodyStr);
-                                            return;
-                                        }
-                                    } catch (e) {
-                                        // not json
-                                        const h = { ...hdrs };
-                                        delete h['transfer-encoding'];
-                                        res.writeHead(code, h);
-                                        res.end(bodyStr);
-                                        return;
-                                    }
+                                        const u = new URL(redirUrl);
+                                        redirPath = u.pathname + u.search;
+                                    } catch (e) { }
 
-                                    if (!clientData) {
-                                        res.writeHead(200);
-                                        res.end(bodyStr);
-                                        return;
-                                    }
-
-                                    // 3. checktoken
-                                    if (process.env.DISABLE_CHECKTOKEN === 'true') {
-                                        // skip checktoken, return token directly
-                                        if (DEBUG) console.log('step 3: checktoken SKIPPED (disabled)');
-                                        const fakeResp = JSON.stringify({
-                                            status: 'success',
-                                            message: '',
-                                            token: refreshToken,
-                                            url: '',
-                                            accountType: 'growtopia'
-                                        });
-                                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                                        res.end(fakeResp);
-                                        return;
-                                    }
-
-                                    if (DEBUG) console.log('step 3: checktoken...');
-
-                                    const checkBody = `refreshToken=${encodeURIComponent(refreshToken)}&clientData=${encodeURIComponent(clientData)}`;
-
-                                    const checkOpts = {
+                                    const redirOpts = {
                                         hostname: gtIp,
                                         port: 443,
-                                        path: '/player/growid/checktoken?valKey=40db4045f2d8c572efe8c4a060605726',
-                                        method: 'POST',
+                                        path: redirPath,
+                                        method: 'GET',
                                         headers: {
                                             'Host': 'login.growtopiagame.com',
                                             'User-Agent': req.headers['user-agent'],
-                                            'Content-Type': 'application/x-www-form-urlencoded',
-                                            'Content-Length': Buffer.byteLength(checkBody)
+                                            'Cookie': resp.headers['set-cookie'] ? resp.headers['set-cookie'].join('; ') : ''
                                         },
                                         rejectUnauthorized: false,
                                         agent: agent
                                     };
 
-                                    const rCheck = https.request(checkOpts, (respCheck) => {
-                                        let dCheck = [];
-                                        respCheck.on('data', c => dCheck.push(c));
-                                        respCheck.on('end', () => {
-                                            let finalBody = Buffer.concat(dCheck).toString();
-
-                                            // clean metadata
-                                            if (finalBody) {
-                                                finalBody = finalBody.replace(/"accountType"\s*:\s*"[^"]*"/, '"accountType":"growtopia"');
-                                            }
-
-                                            const hFinal = { ...respCheck.headers };
-                                            delete hFinal['transfer-encoding'];
-                                            delete hFinal['content-length'];
-
-                                            res.writeHead(respCheck.statusCode, hFinal);
-                                            res.end(finalBody);
-                                        });
+                                    const r2 = https.request(redirOpts, (resp2) => {
+                                        let d2 = '';
+                                        resp2.on('data', c => d2 += c);
+                                        resp2.on('end', () => processToken(d2, resp2.statusCode, resp2.headers));
                                     });
-                                    rCheck.on('error', () => { err502(res); });
-                                    rCheck.write(checkBody);
-                                    rCheck.end();
+                                    r2.on('error', () => { err502(res); });
+                                    r2.end();
+                                    return;
                                 }
-                            });
+                            }
+
+                            processToken(d, resp.statusCode, resp.headers);
+
+                            function processToken(bodyStr, code, hdrs) {
+                                let refreshToken = '';
+                                try {
+                                    const j = JSON.parse(bodyStr);
+                                    if (j.status === 'success' && j.token) {
+                                        refreshToken = j.token;
+                                    } else {
+                                        res.writeHead(code);
+                                        res.end(bodyStr);
+                                        return;
+                                    }
+                                } catch (e) {
+                                    // not json
+                                    const h = { ...hdrs };
+                                    delete h['transfer-encoding'];
+                                    res.writeHead(code, h);
+                                    res.end(bodyStr);
+                                    return;
+                                }
+
+                                if (!clientData) {
+                                    res.writeHead(200);
+                                    res.end(bodyStr);
+                                    return;
+                                }
+
+                                // 3. checktoken
+                                if (process.env.DISABLE_CHECKTOKEN === 'true') {
+                                    // skip checktoken, return token directly
+                                    if (DEBUG) console.log('step 3: checktoken SKIPPED (disabled)');
+                                    const fakeResp = JSON.stringify({
+                                        status: 'success',
+                                        message: '',
+                                        token: refreshToken,
+                                        url: '',
+                                        accountType: 'growtopia'
+                                    });
+                                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                                    res.end(fakeResp);
+                                    return;
+                                }
+
+                                if (DEBUG) console.log('step 3: checktoken...');
+
+                                const checkBody = `refreshToken=${encodeURIComponent(refreshToken)}&clientData=${encodeURIComponent(clientData)}`;
+
+                                const checkOpts = {
+                                    hostname: gtIp,
+                                    port: 443,
+                                    path: '/player/growid/checktoken?valKey=40db4045f2d8c572efe8c4a060605726',
+                                    method: 'POST',
+                                    headers: {
+                                        'Host': 'login.growtopiagame.com',
+                                        'User-Agent': req.headers['user-agent'],
+                                        'Content-Type': 'application/x-www-form-urlencoded',
+                                        'Content-Length': Buffer.byteLength(checkBody)
+                                    },
+                                    rejectUnauthorized: false,
+                                    agent: agent
+                                };
+
+                                const rCheck = https.request(checkOpts, (respCheck) => {
+                                    let dCheck = [];
+                                    respCheck.on('data', c => dCheck.push(c));
+                                    respCheck.on('end', () => {
+                                        let finalBody = Buffer.concat(dCheck).toString();
+
+                                        // clean metadata
+                                        if (finalBody) {
+                                            finalBody = finalBody.replace(/"accountType"\s*:\s*"[^"]*"/, '"accountType":"growtopia"');
+                                        }
+
+                                        const hFinal = { ...respCheck.headers };
+                                        delete hFinal['transfer-encoding'];
+                                        delete hFinal['content-length'];
+
+                                        res.writeHead(respCheck.statusCode, hFinal);
+                                        res.end(finalBody);
+                                    });
+                                });
+                                rCheck.on('error', () => { err502(res); });
+                                rCheck.write(checkBody);
+                                rCheck.end();
+                            }
                         });
-                        r.on('error', () => { err502(res); });
-                        r.end();
                     });
+                    r.on('error', () => { err502(res); });
+                    r.end();
                 }
 
                 // pick proxy based on mode
@@ -466,15 +456,15 @@ const server = https.createServer(options, (req, res) => {
 // ============================================================
 // SERVER TUNING
 // ============================================================
-server.maxConnections = 15000;          // allow 15k simultaneous TCP connections per worker
+server.maxConnections = 50000;          // allow 50k simultaneous TCP connections per worker
 server.headersTimeout = 10000;          // 10s to receive headers (prevent slowloris)
 server.requestTimeout = 30000;          // 30s total request timeout
 server.keepAliveTimeout = 5000;         // 5s keep-alive idle before close
 server.timeout = 60000;                 // 60s socket timeout
 
 // tune global agents
-https.globalAgent.maxSockets = 512;
-http.globalAgent.maxSockets = 512;
+https.globalAgent.maxSockets = 50000;
+http.globalAgent.maxSockets = 50000;
 
 // ============================================================
 // LISTEN
